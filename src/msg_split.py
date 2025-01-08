@@ -1,4 +1,4 @@
-from typing import Generator
+from typing import Generator, List, Optional, Union
 from bs4 import BeautifulSoup, Tag
 
 MAX_LEN = 4096
@@ -7,8 +7,19 @@ class HTMLFragmentationError(Exception):
     """Exception raised when HTML fragmentation fails."""
     pass
 
-def split_message(source: str, max_len=MAX_LEN) -> Generator[str, None, None]:
-    """Splits the original message into fragments of the specified length."""
+def split_message(source: str, max_len: int = MAX_LEN) -> Generator[str, None, None]:
+    """Splits an HTML message into fragments while preserving tag structure.
+    
+    Args:
+        source: HTML string to split
+        max_len: Maximum length for each fragment (default: 4096)
+        
+    Yields:
+        str: HTML fragments, each not exceeding max_len
+        
+    Raises:
+        HTMLFragmentationError: If an unsplittable element exceeds max_len
+    """
     soup = BeautifulSoup(source, 'html.parser')
     
     def get_parent_tags(element):
@@ -33,8 +44,18 @@ def split_message(source: str, max_len=MAX_LEN) -> Generator[str, None, None]:
         """Creates closing tags for a fragment."""
         return ''.join(f'</{tag.name}>' for tag in reversed(tags))
 
-    def is_unsplittable(element):
-        """Check if element is unsplittable."""
+    def is_unsplittable(element: Tag) -> bool:
+        """Determines if an HTML element cannot be split.
+        
+        Args:
+            element: BeautifulSoup Tag object
+            
+        Returns:
+            bool: True if element cannot be split
+            
+        Raises:
+            HTMLFragmentationError: If unsplittable element exceeds max_len
+        """
         if isinstance(element, Tag):
             if element.name in ['a', 'code', 'b', 'i', 'strong', 'em']:
                 content = str(element)
@@ -43,8 +64,16 @@ def split_message(source: str, max_len=MAX_LEN) -> Generator[str, None, None]:
                 return True
         return False
 
-    def process_element(element, parent_tags=None):
-        """Process an HTML element."""
+    def process_element(element: Union[Tag, str], parent_tags: Optional[List[Tag]] = None) -> List[str]:
+        """Processes an HTML element and splits it if necessary.
+        
+        Args:
+            element: BeautifulSoup Tag or string to process
+            parent_tags: List of parent tags to preserve (default: None)
+            
+        Returns:
+            List[str]: List of HTML fragments
+        """
         if parent_tags is None:
             parent_tags = []
 
