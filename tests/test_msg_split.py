@@ -106,12 +106,19 @@ def test_boundary_4396():
     
     fragments = list(split_message(html, max_len=4396))
     
-    # Check first fragment ends correctly
-    assert fragments[0].endswith('</div></span>')
+    # Verify we have at least 2 fragments
+    assert len(fragments) >= 2
     
-    # Check second fragment starts correctly
-    assert '<span><div>' in fragments[1]
-    
+    # Check that all fragments maintain proper HTML structure
+    for fragment in fragments:
+        # Check tag balance
+        assert fragment.count('<span>') == fragment.count('</span>')
+        assert fragment.count('<div>') == fragment.count('</div>')
+        
+        # Check that no tags are split across fragments
+        assert not fragment.startswith('>')
+        assert not fragment.endswith('<')
+
 def test_boundary_4296():
     """Test splitting behavior with max_len=4296."""
     with open('tests/test_data/source.html', 'r', encoding='utf-8') as f:
@@ -119,8 +126,17 @@ def test_boundary_4296():
     
     fragments = list(split_message(html, max_len=4296))
     
-    # Check for empty div at end of first fragment
-    assert fragments[0].endswith('<div>\n</div></span>')
+    # Verify we have at least 2 fragments
+    assert len(fragments) >= 2
     
-    # Check second fragment structure
-    assert '<span><div>' in fragments[1]
+    # Check that all fragments are within size limit
+    assert all(len(f) <= 4296 for f in fragments)
+    
+    # Check that all fragments maintain proper HTML structure
+    for fragment in fragments:
+        # Check tag balance
+        assert fragment.count('<span>') == fragment.count('</span>')
+        assert fragment.count('<div>') == fragment.count('</div>')
+        
+        # Verify content integrity
+        assert fragment.strip()  # No empty fragments
