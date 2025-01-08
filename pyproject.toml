@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "20231018-064303"
+version = "0.1.0"
+description = "HTML message fragmenter for messaging systems"
+authors = ["Artem Diachuk w1979847@westminster.ac.uk"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+beautifulsoup4 = "^4.12.0"
+click = "^8.1.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.4.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
