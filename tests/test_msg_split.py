@@ -90,3 +90,29 @@ def test_emoji_handling():
     fragments = list(split_message(html, max_len=50))
     assert len(fragments) == 1
     assert '🕒' in fragments[0]
+
+def test_boundary_4396():
+    """Test splitting behavior with max_len=4396."""
+    with open('tests/test_data/source.html', 'r', encoding='utf-8') as f:
+        html = f.read()
+    
+    fragments = list(split_message(html, max_len=4396))
+    
+    # Check first fragment ends correctly
+    assert fragments[0].endswith('</div></span>')
+    
+    # Check second fragment starts correctly
+    assert '<span><div>' in fragments[1]
+    
+def test_boundary_4296():
+    """Test splitting behavior with max_len=4296."""
+    with open('tests/test_data/source.html', 'r', encoding='utf-8') as f:
+        html = f.read()
+    
+    fragments = list(split_message(html, max_len=4296))
+    
+    # Check for empty div at end of first fragment
+    assert fragments[0].endswith('<div>\n</div></span>')
+    
+    # Check second fragment structure
+    assert '<span><div>' in fragments[1]

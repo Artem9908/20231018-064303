@@ -61,7 +61,8 @@ The tool will raise `HTMLFragmentationError` when:
   - `msg_split.py` - Core fragmentation logic
   - `split_msg.py` - CLI interface
 - `tests/` - Test files
-  - `test_msg_split.py` - Unit tests
+  - `test_msg_split.py` - Core functionality tests
+  - `test_split_msg.py` - CLI interface tests
   - `test_data/` - Test data files
 - `pyproject.toml` - Project dependencies and metadata
 

@@ -46,6 +46,12 @@ def validate_input(source: str, max_len: int) -> None:
 def split_message(source: str, max_len: int = MAX_LEN) -> Generator[str, None, None]:
     """Splits an HTML message into fragments while preserving tag structure.
     
+    This function takes an HTML string and splits it into fragments that don't exceed
+    the specified maximum length. It preserves HTML tag structure by:
+    - Keeping block tags (<p>, <b>, <strong>, <i>, <ul>, <ol>, <div>, <span>) intact
+    - Not splitting unsplittable elements (like <a>, <code>)
+    - Properly closing and reopening tags at fragment boundaries
+    
     Args:
         source: HTML string to split
         max_len: Maximum length for each fragment (default: 4096)
@@ -54,7 +60,16 @@ def split_message(source: str, max_len: int = MAX_LEN) -> Generator[str, None, N
         str: HTML fragments, each not exceeding max_len
         
     Raises:
-        HTMLFragmentationError: If an unsplittable element exceeds max_len
+        HTMLFragmentationError: If splitting cannot be performed while maintaining HTML validity
+        ValueError: If input parameters are invalid
+        
+    Example:
+        >>> html = '<p>Long content</p><p>More content</p>'
+        >>> fragments = split_message(html, max_len=20)
+        >>> for fragment in fragments:
+        ...     print(fragment)
+        <p>Long content</p>
+        <p>More content</p>
     """
     soup = BeautifulSoup(source, 'html.parser')
     

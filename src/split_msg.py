@@ -1,6 +1,6 @@
 import click
 from pathlib import Path
-from msg_split import split_message, HTMLFragmentationError
+from src.msg_split import split_message, HTMLFragmentationError
 import json
 
 @click.command()
