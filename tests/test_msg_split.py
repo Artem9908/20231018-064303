@@ -65,3 +65,28 @@ def test_only_whitespace():
     html = "   \n   \t   "
     fragments = list(split_message(html, max_len=30))
     assert len(fragments) == 0
+
+def test_real_world_example():
+    """Test with the actual example from requirements."""
+    html = """
+    <strong>🕒 Some tasks are missing worklogs!</strong>
+    <mention id="U1024">Justin Kirvin</mention>
+    Here is the list of tasks that have been in status without worklogs for more than <strong>1h</strong>
+    """
+    fragments = list(split_message(html, max_len=100))
+    assert all(len(f) <= 100 for f in fragments)
+    assert all('<strong>' in f and '</strong>' in f for f in fragments if '<strong>' in f)
+
+def test_mention_tag():
+    """Test handling of mention tags."""
+    html = '<mention id="U1024">Justin Kirvin</mention>'
+    fragments = list(split_message(html, max_len=50))
+    assert len(fragments) == 1
+    assert 'id="U1024"' in fragments[0]
+
+def test_emoji_handling():
+    """Test handling of emoji characters."""
+    html = '<strong>🕒 Some text</strong>'
+    fragments = list(split_message(html, max_len=50))
+    assert len(fragments) == 1
+    assert '🕒' in fragments[0]

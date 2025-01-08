@@ -1,11 +1,47 @@
 from typing import Generator, List, Optional, Union
 from bs4 import BeautifulSoup, Tag
+from functools import lru_cache
 
 MAX_LEN = 4096
 
 class HTMLFragmentationError(Exception):
-    """Exception raised when HTML fragmentation fails."""
+    """Base exception for HTML fragmentation errors."""
     pass
+
+class UnsplittableElementError(HTMLFragmentationError):
+    """Raised when an unsplittable element exceeds max_len."""
+    pass
+
+class InvalidHTMLError(HTMLFragmentationError):
+    """Raised when input HTML is malformed."""
+    pass
+
+class MaxLengthError(HTMLFragmentationError):
+    """Raised when max_len is too small to accommodate required content."""
+    pass
+
+def validate_input(source: str, max_len: int) -> None:
+    """Validates input parameters.
+    
+    Args:
+        source: HTML string to validate
+        max_len: Maximum length to validate
+        
+    Raises:
+        ValueError: If parameters are invalid
+    """
+    if not isinstance(source, str):
+        raise ValueError("Source must be a string")
+    if not isinstance(max_len, int):
+        raise ValueError("max_len must be an integer")
+    if max_len < 1:
+        raise ValueError("max_len must be positive")
+    if not source.strip():
+        return
+    try:
+        BeautifulSoup(source, 'html.parser')
+    except Exception as e:
+        raise InvalidHTMLError(f"Invalid HTML: {str(e)}")
 
 def split_message(source: str, max_len: int = MAX_LEN) -> Generator[str, None, None]:
     """Splits an HTML message into fragments while preserving tag structure.
@@ -22,8 +58,9 @@ def split_message(source: str, max_len: int = MAX_LEN) -> Generator[str, None, N
     """
     soup = BeautifulSoup(source, 'html.parser')
     
-    def get_parent_tags(element):
-        """Returns all parent tags that need to be preserved."""
+    @lru_cache(maxsize=128)
+    def get_parent_tags(element: Tag) -> List[Tag]:
+        """Returns all parent tags that need to be preserved (cached)."""
         tags = []
         for parent in element.parents:
             if parent.name in ['p', 'b', 'strong', 'i', 'ul', 'ol', 'div', 'span']:
