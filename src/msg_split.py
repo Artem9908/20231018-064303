@@ -1,6 +1,5 @@
 from typing import Generator, List, Optional, Union
-from bs4 import BeautifulSoup, Tag
-from functools import lru_cache
+from bs4 import BeautifulSoup, Tag, NavigableString
 
 MAX_LEN = 4096
 
@@ -12,229 +11,94 @@ class UnsplittableElementError(HTMLFragmentationError):
     """Raised when an unsplittable element exceeds max_len."""
     pass
 
-class InvalidHTMLError(HTMLFragmentationError):
-    """Raised when input HTML is malformed."""
-    pass
-
-class MaxLengthError(HTMLFragmentationError):
-    """Raised when max_len is too small to accommodate required content."""
-    pass
-
-def validate_input(source: str, max_len: int) -> None:
-    """Validates input parameters.
-    
-    Args:
-        source: HTML string to validate
-        max_len: Maximum length to validate
-        
-    Raises:
-        ValueError: If parameters are invalid
-    """
-    if not isinstance(source, str):
-        raise ValueError("Source must be a string")
-    if not isinstance(max_len, int):
-        raise ValueError("max_len must be an integer")
-    if max_len < 1:
-        raise ValueError("max_len must be positive")
+def split_message(source: str, max_len: int = MAX_LEN) -> Generator[str, None, None]:
+    """Splits HTML message into fragments while preserving tag structure."""
     if not source.strip():
         return
-    try:
-        BeautifulSoup(source, 'html.parser')
-    except Exception as e:
-        raise InvalidHTMLError(f"Invalid HTML: {str(e)}")
-
-def split_message(source: str, max_len: int = MAX_LEN) -> Generator[str, None, None]:
-    """Splits an HTML message into fragments while preserving tag structure.
-    
-    This function takes an HTML string and splits it into fragments that don't exceed
-    the specified maximum length. It preserves HTML tag structure by:
-    - Keeping block tags (<p>, <b>, <strong>, <i>, <ul>, <ol>, <div>, <span>) intact
-    - Not splitting unsplittable elements (like <a>, <code>)
-    - Properly closing and reopening tags at fragment boundaries
-    
-    Args:
-        source: HTML string to split
-        max_len: Maximum length for each fragment (default: 4096)
         
-    Yields:
-        str: HTML fragments, each not exceeding max_len
-        
-    Raises:
-        HTMLFragmentationError: If splitting cannot be performed while maintaining HTML validity
-        ValueError: If input parameters are invalid
-        
-    Example:
-        >>> html = '<p>Long content</p><p>More content</p>'
-        >>> fragments = split_message(html, max_len=20)
-        >>> for fragment in fragments:
-        ...     print(fragment)
-        <p>Long content</p>
-        <p>More content</p>
-    """
     soup = BeautifulSoup(source, 'html.parser')
     
-    @lru_cache(maxsize=128)
-    def get_parent_tags(element: Tag) -> List[Tag]:
-        """Returns all parent tags that need to be preserved (cached)."""
-        tags = []
-        for parent in element.parents:
-            if parent.name in ['p', 'b', 'strong', 'i', 'ul', 'ol', 'div', 'span']:
-                tags.append(parent)
-        return tags[::-1]
+    def is_unsplittable(tag: Tag) -> bool:
+        return tag.name in ['a', 'code', 'mention']
     
-    def create_wrapper_start(tags):
-        """Creates opening tags for a fragment."""
-        result = []
-        for tag in tags:
-            attrs = ''
-            if tag.attrs:
-                attrs = ' ' + ' '.join(f'{k}="{v}"' for k, v in tag.attrs.items())
-            result.append(f'<{tag.name}{attrs}>')
-        return ''.join(result)
+    def is_block_tag(tag: Tag) -> bool:
+        return tag.name in ['p', 'b', 'strong', 'i', 'ul', 'ol', 'div', 'span']
     
-    def create_wrapper_end(tags):
-        """Creates closing tags for a fragment."""
-        return ''.join(f'</{tag.name}>' for tag in reversed(tags))
-
-    def is_unsplittable(element: Tag) -> bool:
-        """Determines if an HTML element cannot be split.
-        
-        Args:
-            element: BeautifulSoup Tag object
+    def create_fragment(content: str, wrapper_tags: List[Tag] = None) -> str:
+        """Creates a fragment with proper wrapper tags."""
+        if not wrapper_tags:
+            return content.strip()
             
-        Returns:
-            bool: True if element cannot be split
-            
-        Raises:
-            HTMLFragmentationError: If unsplittable element exceeds max_len
-        """
-        if isinstance(element, Tag):
-            if element.name in ['a', 'code', 'b', 'i', 'strong', 'em']:
-                content = str(element)
-                if len(content) > max_len:
-                    raise HTMLFragmentationError("Unsplittable element exceeds max_len")
-                return True
-        return False
+        result = content
+        for tag in wrapper_tags:
+            attrs = ' '.join(f'{k}="{v}"' for k, v in tag.attrs.items())
+            result = f'<{tag.name}{" " + attrs if attrs else ""}>{result}</{tag.name}>'
+        return result.strip()
 
-    def process_element(element: Union[Tag, str], parent_tags: Optional[List[Tag]] = None) -> List[str]:
-        """Processes an HTML element and splits it if necessary.
-        
-        Args:
-            element: BeautifulSoup Tag or string to process
-            parent_tags: List of parent tags to preserve (default: None)
-            
-        Returns:
-            List[str]: List of HTML fragments
-        """
-        if parent_tags is None:
-            parent_tags = []
+    def get_content_length(content: str, wrapper_tags: List[Tag] = None) -> int:
+        """Calculate total length including wrapper tags."""
+        return len(create_fragment(content, wrapper_tags))
 
-        # Handle unsplittable elements
-        if is_unsplittable(element):
-            content = str(element)
+    def process_tag(tag: Tag, current_wrappers: List[Tag] = None) -> Generator[str, None, None]:
+        if current_wrappers is None:
+            current_wrappers = []
+            
+        # Handle unsplittable tags
+        if is_unsplittable(tag):
+            content = str(tag)
             if len(content) > max_len:
-                raise HTMLFragmentationError("Unsplittable element exceeds max_len")
-            return [content]
+                raise UnsplittableElementError(f"Element {tag.name} exceeds max_len")
+            yield content
+            return
 
-        if isinstance(element, Tag):
-            # Try to keep the entire element together first
-            content = str(element)
-            if len(content) <= max_len:
-                return [content]
+        # Update wrappers for block tags
+        if is_block_tag(tag):
+            current_wrappers = current_wrappers + [tag]
 
-            # If we need to split, preserve parent structure
-            current_tags = parent_tags + [element]
-            wrapper_start = create_wrapper_start(current_tags)
-            wrapper_end = create_wrapper_end(current_tags)
-            available_len = max_len - len(wrapper_start) - len(wrapper_end)
+        # Calculate wrapper overhead
+        wrapper_overhead = len(create_fragment('', current_wrappers))
+        available_len = max_len - wrapper_overhead
 
-            fragments = []
-            current = ''
-
-            for child in element.children:
-                child_str = str(child).strip()
-                if not child_str:
+        # Process tag contents
+        current_fragment = ''
+        
+        for child in tag.children:
+            if isinstance(child, NavigableString):
+                text = str(child).strip()
+                if not text:
                     continue
-
-                # Try to add child to current fragment
-                if len(current + child_str) <= available_len:
-                    current += child_str
-                else:
-                    # Store current fragment if it exists
-                    if current:
-                        fragments.append(wrapper_start + current + wrapper_end)
                     
-                    # Handle child content
-                    if isinstance(child, Tag):
-                        for child_fragment in process_element(child, current_tags):
-                            if len(wrapper_start + child_fragment + wrapper_end) <= max_len:
-                                fragments.append(wrapper_start + child_fragment + wrapper_end)
-                            else:
-                                # Split child content if needed
-                                child_parts = process_element(child, current_tags)
-                                fragments.extend(wrapper_start + part + wrapper_end for part in child_parts)
-                    else:
-                        # Split text at word boundaries
-                        words = child_str.split()
-                        current = ''
-                        for word in words:
-                            if len(current + word + ' ') <= available_len:
-                                current += word + ' '
-                            else:
-                                if current:
-                                    fragments.append(wrapper_start + current.rstrip() + wrapper_end)
-                                current = word + ' '
-                    current = ''
-
-            if current:
-                fragments.append(wrapper_start + current.rstrip() + wrapper_end)
-
-            return fragments
-
-        # Handle text nodes
-        text = str(element).strip()
-        if not text:
-            return []
-        
-        if len(text) <= max_len:
-            return [text]
-        
-        # Split text at word boundaries
-        words = text.split()
-        fragments = []
-        current = ''
-        
-        for word in words:
-            if len(current + word + ' ') <= max_len:
-                current += word + ' '
+                potential_text = current_fragment + (' ' if current_fragment else '') + text
+                if len(potential_text) <= available_len:
+                    current_fragment = potential_text
+                else:
+                    if current_fragment:
+                        yield create_fragment(current_fragment, current_wrappers)
+                    current_fragment = text if len(text) <= available_len else text[:available_len]
+                    if len(text) > available_len:
+                        for i in range(available_len, len(text), available_len):
+                            yield create_fragment(text[i:i + available_len], current_wrappers)
+                        current_fragment = ''
             else:
-                if current:
-                    fragments.append(current.rstrip())
-                current = word + ' '
-        
-        if current:
-            fragments.append(current.rstrip())
-            
-        return fragments
-
-    # Process root elements
-    current_fragment = ''
-    root_tags = []
-    
-    for element in soup.children:
-        if not str(element).strip():
-            continue
-            
-        if isinstance(element, Tag):
-            root_tags = [element]
-        
-        for fragment in process_element(element, root_tags):
-            if len(current_fragment + fragment) <= max_len:
-                current_fragment += fragment
-            else:
+                # Process nested tag
                 if current_fragment:
-                    yield current_fragment
-                current_fragment = fragment
-    
-    if current_fragment:
-        yield current_fragment
+                    yield create_fragment(current_fragment, current_wrappers)
+                    current_fragment = ''
+                
+                for fragment in process_tag(child, current_wrappers):
+                    yield fragment
+
+        if current_fragment:
+            yield create_fragment(current_fragment, current_wrappers)
+
+    # Process each top-level element
+    for element in soup.children:
+        if isinstance(element, NavigableString):
+            text = str(element).strip()
+            if not text:
+                continue
+                
+            yield text
+        elif isinstance(element, Tag):
+            for fragment in process_tag(element):
+                yield fragment
